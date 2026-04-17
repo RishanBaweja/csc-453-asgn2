@@ -24,8 +24,9 @@ struct threadinfo_st{
 tid t lwp create(lwpfun function, void *argument);
   - Executes a function with arguments 
   - Returns tid_t thread id or NO THREAD
-  - DOES THAT JUST MEAN NULL?
+  - NO THREAD is in library
   - FOR FPU DOES THAT COME FROM CREATE?
+    - library value
   - thread’s resources will consist of a context and stack, both initialized
   - s = mmap(NULL,howbig,PROT READ|PROT WRITE,MAP PRIVATE|MAP ANONYMOUS|MAP STACK,-1,0);
     - howbig = ((rl.rlim_curr + page_size - 1) / page_size) * page_size
@@ -40,7 +41,6 @@ tid t lwp create(lwpfun function, void *argument);
 void lwp start(void);
   - converts calling thead into a lwp
   - yields to another lwp
-  - I DONT REALLY UNDERSTAND THIS ONE
 */
 
 /* 
@@ -56,6 +56,7 @@ void lwp exit(int exitval);
   - terminates curr thread
   - yields to whichever thread the scheduler chooses
   - DOES THAT JUST MEAN IT CALLS YIELD
+    - Yes
   - if no other thread, exit
 */
 
@@ -78,9 +79,9 @@ thread tid2thread(tid t tid);
 /*
 void lwp set scheduler(scheduler sched);
   - whatever scheduler is passed in will be new scheduler
-  - old scheduler shoudl transfer its threads to the new scheduler in next() order ????????
+  - old scheduler should transfer its threads to the new scheduler in next() order
+    - just call next
   - if scheduler is null, do round robin
-  - DOES THAT MEAN THAT WE SHOULD BE DOING ROUND ROBIN BY DEFAULT
 */
 /*
 scheduler lwp get scheduler(void);
