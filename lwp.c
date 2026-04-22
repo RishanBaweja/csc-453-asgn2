@@ -403,7 +403,10 @@ void lwp set scheduler(scheduler sched);
 void lwp_set_scheduler(scheduler sched) {
   if (sched == NULL)
     sched = RoundRobin;
-
+  
+  if (sched == current_scheduler){
+    return;
+  }
   scheduler old = current_scheduler;
 
   /* init new one first */
