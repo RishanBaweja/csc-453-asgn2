@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -5,10 +6,16 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #include "lwp.h"
+#include "fp.h"
+
+/* bc of mac */
+#ifndef MAP_STACK
+#define MAP_STACK 0
+#endif
 
 /* ---- Globals ---- */
 static thread current_thread = NULL;   /* who is running right now */
-static tid_t next_tid = 1;            /* counter for unique tids */
+static tid_t next_tid = 1;            /* counter for unique tids - 1 for call thrd*/
 
 /* linked list of ALL threads(for tid2thread) */
 static thread all_threads = NULL;
@@ -29,7 +36,7 @@ static void lwp_wrap(lwpfun fun, void *arg);
 
 /* ROUND ROBIN */
 static thread rr_head = NULL;
-static thread rr_count = 0;
+static int rr_count = 0;
 
 static void rr_admit(thread new) {
   if (!rr_head) {
@@ -66,7 +73,7 @@ static void rr_remove(thread victim) {
   rr_count--;
 }
 
-static void rr_next(void) {
+static thread rr_next(void) {
   if (!rr_head){
     return NULL;
   }
@@ -124,12 +131,119 @@ tid t lwp create(lwpfun function, void *argument);
       - resource_limit = getrlimit(RLIMIT_STACK, &rl);
   
 */
+tid_t lwp_create(lwpfun func, void *arg) {
+    thread newThread = malloc(sizeof(*newThread));
+    if (newThread == NULL) {
+        return NO_THREAD;
+    }
+
+    /* get stack size from resource limit */
+    size_t stack_size;
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_STACK, &rl) == -1 || rl.rlim_cur == RLIM_INFINITY) {
+        stack_size = 8 * 1024 * 1024;
+    } else {
+        stack_size = (size_t) rl.rlim_cur;
+    }
+
+    /* round up to page boundary */
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    if (page_size == -1) {
+        free(newThread);
+        return NO_THREAD;
+    }
+    stack_size = ((stack_size + page_size - 1) / page_size) * page_size;
+
+    /* allocate stack */
+    void *thread_stack = mmap(NULL, stack_size,
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK,
+        -1, 0);
+    if (thread_stack == MAP_FAILED) {
+        free(newThread);
+        return NO_THREAD;
+    }
+
+    /* populate thread struct */
+    newThread->tid = next_tid++;
+    newThread->stacksize = stack_size;
+    newThread->stack = (unsigned long *)thread_stack;
+    newThread->status = LWP_LIVE;
+    newThread->state.fxsave = FPU_INIT;
+    newThread->lib_one = NULL;
+    newThread->lib_two = NULL;
+    newThread->sched_one = NULL;
+    newThread->sched_two = NULL;
+    newThread->exited = NULL;
+
+    /* for sm garbage */
+    memset(&newThread->state, 0, sizeof(rfile));
+    newThread->state.fxsave = FPU_INIT;
+
+    /* build the fake stack frame */
+    unsigned long *sp = (unsigned long *)((char *)thread_stack + stack_size);
+
+    sp = (unsigned long *)((unsigned long)sp & ~0xFUL);
+
+    sp--;
+    *sp = (unsigned long) lwp_wrap;   /* return address */
+    sp--;
+    *sp = 0;                          /* fake old base pointer */
+
+    newThread->state.rbp = (unsigned long) sp;
+    newThread->state.rsp = (unsigned long) sp;
+    newThread->state.rdi = (unsigned long) func;
+    newThread->state.rsi = (unsigned long) arg;
+
+    /* add to all_threads list */
+    newThread->lib_one = all_threads;
+    all_threads = newThread;
+
+    /* init scheduler if needed */
+    if (!current_scheduler)
+        current_scheduler = RoundRobin;
+
+    current_scheduler->admit(newThread);
+    return newThread->tid;
+}
+
+
 
 /*
 void lwp start(void);
   - converts calling thead into a lwp
   - yields to another lwp
 */
+void lwp_start(void) {
+    thread newThread = malloc(sizeof(*newThread));
+    if (newThread == NULL)
+        return;
+
+    newThread->tid = next_tid++;
+    newThread->stack = NULL;        /* don't free this stack later */
+    newThread->stacksize = 0;
+    newThread->status = LWP_LIVE;
+    newThread->lib_one = NULL;
+    newThread->lib_two = NULL;
+    newThread->sched_one = NULL;
+    newThread->sched_two = NULL;
+    newThread->exited = NULL;
+
+    /* add to all_threads list */
+    newThread->lib_one = all_threads;
+    all_threads = newThread;
+
+    /* init scheduler if needed */
+    if (!current_scheduler)
+        current_scheduler = RoundRobin;
+
+    current_scheduler->admit(newThread);
+
+
+    current_thread = newThread;
+
+    lwp_yield();
+}
 
 /* 
 void lwp yield(void);
@@ -158,6 +272,35 @@ void lwp exit(int exitval);
     - Yes
   - if no other thread, exit
 */
+void lwp_exit(int status) {
+  current_thread->status = MKTERMSTAT(LWP_TERM, status);
+  current_scheduler->remove(current_thread);
+
+  if (wait_head) {
+    /* if some1 wating - put them first */
+    thread waiter = wait_head;
+    wait_head = wait_head->lib_two;
+
+    if (!wait_head) {
+      wait_head = NULL;
+    }
+    waiter->lib_two = NULL;
+    waiter->exited = current_thread;
+    current_scheduler->admit(waiter);
+  } else {
+    current_thread->lib_two = NULL;
+
+    if (!term_head) {
+      term_head = current_thread;
+      term_tail = current_thread;
+    } else {
+      term_tail->lib_two = current_thread;
+      term_tail = current_thread;
+    }
+  }
+
+  lwp_yield();
+}
 
 /*
 tid t lwp wait(int *status);
@@ -209,7 +352,7 @@ void lwp set scheduler(scheduler sched);
   - if scheduler is null, do round robin
 */
 void lwp_set_scheduler(scheduler sched) {
-  if (sched = NULL) {
+  if (sched == NULL) {
     sched = RoundRobin;
   }
 
