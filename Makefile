@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -g -pedantic -fpic
+CFLAGS = -Wall -g -pedantic -fpic -std=gnu99
 TARGET = liblwp.so
 OBJS = lwp.o magic64.o
 
