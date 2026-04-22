@@ -84,7 +84,7 @@ static thread rr_next(void) {
 }
 
 static int rr_qlen(void) {
-    return rr_count;
+  return rr_count;
 }
 
 static struct scheduler rr_publish = {
@@ -132,79 +132,79 @@ tid t lwp create(lwpfun function, void *argument);
   
 */
 tid_t lwp_create(lwpfun func, void *arg) {
-    thread newThread = malloc(sizeof(*newThread));
-    if (newThread == NULL) {
-        return NO_THREAD;
-    }
+  thread newThread = malloc(sizeof(*newThread));
+  if (newThread == NULL) {
+    return NO_THREAD;
+  }
 
-    /* get stack size from resource limit */
-    size_t stack_size;
-    struct rlimit rl;
-    if (getrlimit(RLIMIT_STACK, &rl) == -1 || rl.rlim_cur == RLIM_INFINITY) {
-        stack_size = 8 * 1024 * 1024;
-    } else {
-        stack_size = (size_t) rl.rlim_cur;
-    }
+  /* get stack size from resource limit */
+  size_t stack_size;
+  struct rlimit rl;
+  if (getrlimit(RLIMIT_STACK, &rl) == -1 || rl.rlim_cur == RLIM_INFINITY) {
+    stack_size = 8 * 1024 * 1024;
+  } else {
+    stack_size = (size_t) rl.rlim_cur;
+  }
 
-    /* round up to page boundary */
-    long page_size = sysconf(_SC_PAGE_SIZE);
-    if (page_size == -1) {
-        free(newThread);
-        return NO_THREAD;
-    }
-    stack_size = ((stack_size + page_size - 1) / page_size) * page_size;
+  /* round up to page boundary */
+  long page_size = sysconf(_SC_PAGE_SIZE);
+  if (page_size == -1) {
+    free(newThread);
+    return NO_THREAD;
+  }
+  stack_size = ((stack_size + page_size - 1) / page_size) * page_size;
 
-    /* allocate stack */
-    void *thread_stack = mmap(NULL, stack_size,
-        PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK,
-        -1, 0);
-    if (thread_stack == MAP_FAILED) {
-        free(newThread);
-        return NO_THREAD;
-    }
+  /* allocate stack */
+  void *thread_stack = mmap(NULL, stack_size,
+      PROT_READ | PROT_WRITE,
+      MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK,
+      -1, 0);
+  if (thread_stack == MAP_FAILED) {
+    free(newThread);
+    return NO_THREAD;
+  }
 
-    /* populate thread struct */
-    newThread->tid = next_tid++;
-    newThread->stacksize = stack_size;
-    newThread->stack = (unsigned long *)thread_stack;
-    newThread->status = LWP_LIVE;
-    newThread->state.fxsave = FPU_INIT;
-    newThread->lib_one = NULL;
-    newThread->lib_two = NULL;
-    newThread->sched_one = NULL;
-    newThread->sched_two = NULL;
-    newThread->exited = NULL;
+  /* populate thread struct */
+  newThread->tid = next_tid++;
+  newThread->stacksize = stack_size;
+  newThread->stack = (unsigned long *)thread_stack;
+  newThread->status = LWP_LIVE;
+  newThread->state.fxsave = FPU_INIT;
+  newThread->lib_one = NULL;
+  newThread->lib_two = NULL;
+  newThread->sched_one = NULL;
+  newThread->sched_two = NULL;
+  newThread->exited = NULL;
 
-    /* for sm garbage */
-    memset(&newThread->state, 0, sizeof(rfile));
-    newThread->state.fxsave = FPU_INIT;
+  /* for sm garbage */
+  memset(&newThread->state, 0, sizeof(rfile));
+  newThread->state.fxsave = FPU_INIT;
 
-    /* build the fake stack frame */
-    unsigned long *sp = (unsigned long *)((char *)thread_stack + stack_size);
+  /* build the fake stack frame */
+  unsigned long *sp = (unsigned long *)((char *)thread_stack + stack_size);
 
-    sp = (unsigned long *)((unsigned long)sp & ~0xFUL);
+  sp = (unsigned long *)((unsigned long)sp & ~0xFUL);
 
-    sp--;
-    *sp = (unsigned long) lwp_wrap;   /* return address */
-    sp--;
-    *sp = 0;                          /* fake old base pointer */
+  sp--;
+  *sp = (unsigned long) lwp_wrap;   /* return address */
+  sp--;
+  *sp = 0;                          /* fake old base pointer */
 
-    newThread->state.rbp = (unsigned long) sp;
-    newThread->state.rsp = (unsigned long) sp;
-    newThread->state.rdi = (unsigned long) func;
-    newThread->state.rsi = (unsigned long) arg;
+  newThread->state.rbp = (unsigned long) sp;
+  newThread->state.rsp = (unsigned long) sp;
+  newThread->state.rdi = (unsigned long) func;
+  newThread->state.rsi = (unsigned long) arg;
 
-    /* add to all_threads list */
-    newThread->lib_one = all_threads;
-    all_threads = newThread;
+  /* add to all_threads list */
+  newThread->lib_one = all_threads;
+  all_threads = newThread;
 
-    /* init scheduler if needed */
-    if (!current_scheduler)
-        current_scheduler = RoundRobin;
-
-    current_scheduler->admit(newThread);
-    return newThread->tid;
+  /* init scheduler if needed */
+  if (!current_scheduler){
+    current_scheduler = RoundRobin;
+  }
+  current_scheduler->admit(newThread);
+  return newThread->tid;
 }
 
 
@@ -234,11 +234,10 @@ void lwp_start(void) {
     all_threads = newThread;
 
     /* init scheduler if needed */
-    if (!current_scheduler)
-        current_scheduler = RoundRobin;
-
+    if (!current_scheduler){
+      current_scheduler = RoundRobin;
+    }
     current_scheduler->admit(newThread);
-
 
     current_thread = newThread;
 
@@ -277,7 +276,7 @@ void lwp_exit(int status) {
   current_scheduler->remove(current_thread);
 
   if (wait_head) {
-    /* if some1 wating - put them first */
+    /* if someone wating - put them first */
     thread waiter = wait_head;
     wait_head = wait_head->lib_two;
 
@@ -287,13 +286,15 @@ void lwp_exit(int status) {
     waiter->lib_two = NULL;
     waiter->exited = current_thread;
     current_scheduler->admit(waiter);
-  } else {
+  } 
+  else {
     current_thread->lib_two = NULL;
 
     if (!term_head) {
       term_head = current_thread;
       term_tail = current_thread;
-    } else {
+    } 
+    else {
       term_tail->lib_two = current_thread;
       term_tail = current_thread;
     }
@@ -309,12 +310,74 @@ tid t lwp wait(int *status);
   - returns termination status or NO THREAD
 */
 
+tid_t lwp_wait(int *status){
+  thread t = term_head;
+
+  if(t != NULL){
+    /* Updated term head and tail as necessary */
+    term_head = t -> exited;
+    if (term_head == NULL) {
+      term_tail = NULL;
+    }
+    /* Get info before freeing */
+    tid_t termination_tid = t -> tid;
+    int termination_stat = t -> status;
+
+    /* If not the original system thread, unmap resources */
+    if(t->stack != NULL){
+      munmap(t->stack, t->stacksize);
+    }
+    /* Free the dynamically allocated context regardless */
+    if(status != NULL){
+      *status = termination_stat;
+    }
+    free(t);
+    return termination_tid;
+  }
+  else{
+    /* If there are no more threads that could possibly block */
+    scheduler sched = lwp_get_scheduler();
+    if(sched -> qlen() <= 1){
+      return NO_THREAD;
+    }
+    else{
+      sched -> remove(current_thread);
+      current_thread -> exited = NULL;
+
+      if (!wait_head) {
+        wait_head = current_thread;
+        wait_tail = current_thread;
+      } 
+      else {
+        wait_tail -> exited = current_thread;
+        wait_tail = current_thread;
+      }
+      lwp_yield();
+
+      /*NEED TO MAKE SURE THAT YIELD AND WAIT INTERACT FINE HERElf*/
+      t = current_thread -> exited;
+      tid_t termination_tid = t->tid;
+      
+      if (status != NULL) {
+        *status = t->status;
+      }
+
+      if (t->stack != NULL) {
+        munmap(t->stack, t->stacksize);
+      }
+
+      free(t);
+      return termination_tid;
+    }
+  }
+}
+
 /*
 tid t lwp gettid(void);
   - returns id of calling lwp or NO THREAD
 */
-tid_t lwp_gettid(void) {
-  if (current_thread) {
+tid_t lwp_gettid(void){
+  if (current_thread){
     return current_thread->tid;
   }
   return NO_THREAD;
@@ -340,8 +403,8 @@ thread tid2thread(tid_t tid) {
   - instead of returning %rax and exit looking at %rdi, we wrap it to make it simpler
  */
 static void lwp_wrap(lwpfun fun, void *arg) {
-    int rval = fun(arg);
-    lwp_exit(rval);
+  int rval = fun(arg);
+  lwp_exit(rval);
 }
 
 /*
@@ -402,9 +465,3 @@ scheduler lwp get scheduler(void);
 scheduler lwp_get_scheduler(void) {
   return current_scheduler;
 }
-
-/*
-  - #define LWPTERMSTAT(s) extracts the exit code from a status
-  - how does it extract the exit code
-
-*/
