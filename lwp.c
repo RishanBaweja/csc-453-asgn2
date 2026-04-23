@@ -111,12 +111,10 @@ Overall Assignment Goal:
   - Implement support for threads
   - Threads execute in the same address space as other threads
   - We are implementing a user-level thread package
-  - This will be done by taking the orignal system thread that 
-    runs main and having it 
-    create an arbitrary # of threads
+  - This will be done by taking the orignal system thread that runs main and having it 
+  create an arbitrary # of threads
   - Generally:
-      - lwp_create will create a thread, but it will 
-        not run anything
+      - lwp_create will create a thread, but it will not run anything
         until it is returned to by lwp_yield
       - lwp_yield yields control of current thread to another thread
       - lwp_exit terminates curr thread and switches to another, if any
